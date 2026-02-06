@@ -38,7 +38,11 @@ function isAllDayEvent(v: any): boolean {
   return atMidnight && dur >= 0 && dur % oneDay === 0
 }
 
-export async function importIcsToCalendar(opts: { icsUrl: string; targetCalendarName: string }) {
+export async function importIcsToCalendar(opts: {
+  icsUrl: string
+  targetCalendarName: string
+  container: 'local' | 'icloud' | 'ask'
+}) {
   const url = normalizeIcsUrl(opts.icsUrl)
 
   const data: Record<string, any> = await (ical.async.fromURL as any)(url, {
@@ -87,7 +91,8 @@ export async function importIcsToCalendar(opts: { icsUrl: string; targetCalendar
   const payloadB64 = Buffer.from(
     JSON.stringify({
       calendarName: opts.targetCalendarName,
-      events
+      events,
+      container: opts.container
     }),
     'utf8'
   ).toString('base64')
@@ -103,12 +108,68 @@ function b64decode(s) {
 
 var payload = JSON.parse(b64decode("${payloadB64}"));
 var Calendar = Application("Calendar");
+var System = Application.currentApplication();
+System.includeStandardAdditions = true;
+
+function sourceName(source) {
+  try { if (source.name) return source.name(); } catch (err) {}
+  try { if (source.title) return source.title(); } catch (err) {}
+  return null;
+}
+
+function findSourceByMatch(matchFn) {
+  var sources = Calendar.sources();
+  for (var i = 0; i < sources.length; i++) {
+    var name = sourceName(sources[i]);
+    if (name && matchFn(name.toLowerCase())) {
+      return sources[i];
+    }
+  }
+  return null;
+}
+
+function chooseSourceInteractive() {
+  var sources = Calendar.sources();
+  var names = sources.map(function(source) {
+    return sourceName(source) || 'Unknown';
+  });
+  var choice = System.chooseFromList(names, {
+    withPrompt: 'Choose a Calendar account to import into:',
+    defaultItems: [names[0]]
+  });
+  if (!choice) {
+    throw new Error('Import canceled: no calendar account selected.');
+  }
+  var selectedName = choice[0];
+  for (var i = 0; i < sources.length; i++) {
+    if ((sourceName(sources[i]) || 'Unknown') === selectedName) {
+      return sources[i];
+    }
+  }
+  return null;
+}
+
+var targetSource = null;
+if (payload.container === 'ask') {
+  targetSource = chooseSourceInteractive();
+} else if (payload.container === 'icloud') {
+  targetSource = findSourceByMatch(function(name) { return name.indexOf('icloud') !== -1; });
+} else {
+  targetSource = findSourceByMatch(function(name) {
+    return name.indexOf('on my mac') !== -1 || name.indexOf('local') !== -1;
+  });
+}
+
+if (!targetSource) {
+  var available = Calendar.sources().map(function(source) { return sourceName(source) || 'Unknown'; });
+  throw new Error('No matching Calendar account found for "' + payload.container + '". Available sources: ' + available.join(', '));
+}
 
 // Find or create calendar
-var matches = Calendar.calendars.whose({ name: payload.calendarName });
+var matches = Calendar.calendars.whose({ name: payload.calendarName, source: targetSource });
 var cal = (matches.length > 0)
   ? matches[0]
-  : Calendar.Calendar({ name: payload.calendarName }).make();
+  : Calendar.Calendar({ name: payload.calendarName, source: targetSource }).make();
 
 var created = 0;
 
