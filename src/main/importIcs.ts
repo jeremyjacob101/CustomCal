@@ -97,9 +97,85 @@ export async function importIcsToCalendar(opts: {
     container: opts.container
   }
 
-  const { stdout } = await runSwiftImport(payload)
+  const { stdout } =
+    opts.container === 'local'
+      ? await runJxaImport(payload)
+      : await runSwiftImport(payload)
 
   return JSON.parse(stdout.trim()) as { created: number }
+}
+
+async function runJxaImport(payload: {
+  calendarName: string
+  events: Array<{
+    summary: string
+    description: string
+    location: string
+    isAllDay: boolean
+    startMs: number
+    endMs: number
+    startYMD: [number, number, number] | null
+    endYMD: [number, number, number] | null
+  }>
+  container: 'local' | 'icloud'
+}) {
+  const payloadB64 = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64')
+
+  const jxa = `
+ObjC.import('Foundation');
+
+function b64decode(s) {
+  var ns = $.NSString.alloc.initWithUTF8String(s);
+  var data = $.NSData.alloc.initWithBase64EncodedStringOptions(ns, 0);
+  return $.NSString.alloc.initWithDataEncoding(data, $.NSUTF8StringEncoding).js;
+}
+
+var payload = JSON.parse(b64decode("${payloadB64}"));
+var Calendar = Application("Calendar");
+
+// Find or create calendar
+var matches = Calendar.calendars.whose({ name: payload.calendarName });
+var cal = (matches.length > 0)
+  ? matches[0]
+  : Calendar.Calendar({ name: payload.calendarName }).make();
+
+var created = 0;
+
+payload.events.forEach(function(e) {
+  var startDate, endDate;
+
+  if (e.isAllDay && e.startYMD && e.endYMD) {
+    // Local dates (no timezone shift) for all-day banners
+    startDate = new Date(e.startYMD[0], e.startYMD[1] - 1, e.startYMD[2]);
+    endDate   = new Date(e.endYMD[0],   e.endYMD[1] - 1,   e.endYMD[2]);
+  } else {
+    startDate = new Date(e.startMs);
+    endDate   = new Date(e.endMs);
+  }
+
+  var ev = Calendar.Event({
+    summary: e.summary,
+    startDate: startDate,
+    endDate: endDate,
+    location: e.location,
+    description: e.description
+  });
+
+  cal.events.push(ev);
+
+  if (e.isAllDay) {
+    // Try both property names (varies by macOS scripting dictionary)
+    try { ev.allDayEvent = true; } catch (err) {}
+    try { ev.alldayEvent = true; } catch (err) {}
+  }
+
+  created++;
+});
+
+JSON.stringify({ created: created });
+`
+
+  return await execFileAsync('/usr/bin/osascript', ['-l', 'JavaScript', '-e', jxa])
 }
 
 async function runSwiftImport(payload: {
