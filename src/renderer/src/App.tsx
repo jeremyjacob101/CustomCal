@@ -3,6 +3,7 @@ import { useState } from 'react'
 export default function App() {
   const [icsUrl, setIcsUrl] = useState('')
   const [name, setName] = useState('Imported Copy')
+  const [container, setContainer] = useState<'local' | 'icloud'>('icloud')
   const [log, setLog] = useState('')
 
   async function runImport() {
@@ -17,7 +18,7 @@ export default function App() {
       const res = await window.electron.importCalendar({
         icsUrl,
         targetCalendarName: name,
-        container: 'local'
+        container
       })
 
       setLog(`Done. Created ${res.created} events in "${name}".`)
@@ -42,6 +43,18 @@ export default function App() {
       <div style={{ marginTop: 8 }}>
         <div>New calendar name:</div>
         <input style={{ width: '100%' }} value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
+
+      <div style={{ marginTop: 8 }}>
+        <div>Destination account:</div>
+        <select
+          style={{ width: '100%' }}
+          value={container}
+          onChange={(e) => setContainer(e.target.value as 'local' | 'icloud')}
+        >
+          <option value="icloud">iCloud</option>
+          <option value="local">On My Mac</option>
+        </select>
       </div>
 
       <button style={{ marginTop: 12 }} onClick={runImport}>
