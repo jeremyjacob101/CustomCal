@@ -165,7 +165,6 @@ if !accessGranted {
 }
 
 let sources = store.sources
-let defaultSource = store.defaultCalendarForNewEvents?.source
 func sourceLabel(_ source: EKSource) -> String {
   return "\\(source.title) (\\(source.sourceType.rawValue))"
 }
@@ -173,13 +172,13 @@ func sourceLabel(_ source: EKSource) -> String {
 func pickSource() -> EKSource? {
   switch payload.container.lowercased() {
   case "local":
-    if let source = defaultSource {
-      return source
-    }
     if let source = sources.first(where: { $0.sourceType == .local }) {
       return source
     }
-    if let source = sources.first(where: { $0.title.lowercased().contains("on my mac") || $0.title.lowercased() == "other" }) {
+    if let source = sources.first(where: {
+      let title = $0.title.lowercased()
+      return title.contains("on my mac") || title.contains("local") || title == "other"
+    }) {
       return source
     }
     return sources.first(where: { $0.sourceType != .calDAV && $0.sourceType != .subscribed })
