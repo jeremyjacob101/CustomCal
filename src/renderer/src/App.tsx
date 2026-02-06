@@ -3,7 +3,7 @@ import { useState } from 'react'
 export default function App() {
   const [icsUrl, setIcsUrl] = useState('')
   const [name, setName] = useState('Imported Copy')
-  const [container, setContainer] = useState<'local' | 'icloud' | 'ask'>('icloud')
+  const [container, setContainer] = useState<'local' | 'icloud'>('icloud')
   const [log, setLog] = useState('')
 
   async function runImport() {
@@ -50,11 +50,10 @@ export default function App() {
         <select
           style={{ width: '100%' }}
           value={container}
-          onChange={(e) => setContainer(e.target.value as 'local' | 'icloud' | 'ask')}
+          onChange={(e) => setContainer(e.target.value as 'local' | 'icloud')}
         >
           <option value="icloud">iCloud</option>
           <option value="local">On My Mac</option>
-          <option value="ask">Ask each time</option>
         </select>
       </div>
 

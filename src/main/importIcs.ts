@@ -44,7 +44,7 @@ function isAllDayEvent(v: any): boolean {
 export async function importIcsToCalendar(opts: {
   icsUrl: string
   targetCalendarName: string
-  container: 'local' | 'icloud' | 'ask'
+  container: 'local' | 'icloud'
 }) {
   const url = normalizeIcsUrl(opts.icsUrl)
 
@@ -114,7 +114,7 @@ async function runSwiftImport(payload: {
     startYMD: [number, number, number] | null
     endYMD: [number, number, number] | null
   }>
-  container: 'local' | 'icloud' | 'ask'
+  container: 'local' | 'icloud'
 }) {
   const script = `
 import Foundation
@@ -165,6 +165,7 @@ if !accessGranted {
 }
 
 let sources = store.sources
+let defaultSource = store.defaultCalendarForNewEvents?.source
 func sourceLabel(_ source: EKSource) -> String {
   return "\\(source.title) (\\(source.sourceType.rawValue))"
 }
@@ -172,14 +173,21 @@ func sourceLabel(_ source: EKSource) -> String {
 func pickSource() -> EKSource? {
   switch payload.container.lowercased() {
   case "local":
-    return sources.first(where: { $0.sourceType == .local })
+    if let source = defaultSource {
+      return source
+    }
+    if let source = sources.first(where: { $0.sourceType == .local }) {
+      return source
+    }
+    if let source = sources.first(where: { $0.title.lowercased().contains("on my mac") || $0.title.lowercased() == "other" }) {
+      return source
+    }
+    return sources.first(where: { $0.sourceType != .calDAV && $0.sourceType != .subscribed })
   case "icloud":
     if let icloud = sources.first(where: { $0.sourceType == .calDAV && $0.title.lowercased().contains("icloud") }) {
       return icloud
     }
     return sources.first(where: { $0.sourceType == .calDAV })
-  case "ask":
-    return sources.first(where: { $0.sourceType == .calDAV }) ?? sources.first
   default:
     return nil
   }

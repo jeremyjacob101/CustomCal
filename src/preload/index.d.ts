@@ -6,7 +6,7 @@ declare global {
       importCalendar(opts: {
         icsUrl: string;
         targetCalendarName: string;
-        container: "local" | "icloud" | "ask";
+        container: "local" | "icloud";
       }): Promise<{ created: number }>;
     };
   }
