@@ -49,7 +49,7 @@ export async function importIcsToCalendar(opts: {
   const url = normalizeIcsUrl(opts.icsUrl)
 
   const data: Record<string, any> = await (ical.async.fromURL as any)(url, {
-    headers: { 'User-Agent': 'CalendarCloner/0.1' }
+    headers: { 'User-Agent': 'CustomCalendar/0.0.1' }
   })
 
   const oneDay = 24 * 60 * 60 * 1000
@@ -317,7 +317,7 @@ let resultData = try JSONSerialization.data(withJSONObject: result, options: [])
 FileHandle.standardOutput.write(resultData)
 `
 
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'calendar-cloner-'))
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'CustomCal-'))
   const scriptPath = path.join(tmpDir, 'import.swift')
   const payloadPath = path.join(tmpDir, 'payload.json')
 

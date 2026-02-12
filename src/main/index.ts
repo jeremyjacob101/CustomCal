@@ -69,7 +69,7 @@ function createTrayWindow(): void {
 
 function createTray(): void {
   tray = new Tray(getTrayIcon())
-  tray.setToolTip('Calendar Cloner')
+  tray.setToolTip('Custom Calendar')
   tray.on('click', toggleTrayWindow)
 }
 
