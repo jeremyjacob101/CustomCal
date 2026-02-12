@@ -317,7 +317,7 @@ let resultData = try JSONSerialization.data(withJSONObject: result, options: [])
 FileHandle.standardOutput.write(resultData)
 `
 
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'calendar-cloner-'))
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'CustomCal-'))
   const scriptPath = path.join(tmpDir, 'import.swift')
   const payloadPath = path.join(tmpDir, 'payload.json')
 
