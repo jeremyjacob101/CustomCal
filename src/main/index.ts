@@ -69,7 +69,7 @@ function createTrayWindow(): void {
 
 function createTray(): void {
   tray = new Tray(getTrayIcon())
-  tray.setToolTip('Calendar Cloner')
+  tray.setToolTip('Custom Calendar')
   tray.on('click', toggleTrayWindow)
 }
 
@@ -99,7 +99,7 @@ app.whenReady().then(() => {
 });
 
   if (process.platform === 'darwin') {
-    app.dock.hide()
+    app.dock?.hide()
   }
   createTrayWindow()
   createTray()

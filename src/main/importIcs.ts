@@ -49,7 +49,7 @@ export async function importIcsToCalendar(opts: {
   const url = normalizeIcsUrl(opts.icsUrl)
 
   const data: Record<string, any> = await (ical.async.fromURL as any)(url, {
-    headers: { 'User-Agent': 'CalendarCloner/0.1' }
+    headers: { 'User-Agent': 'CustomCalendar/0.0.1' }
   })
 
   const oneDay = 24 * 60 * 60 * 1000

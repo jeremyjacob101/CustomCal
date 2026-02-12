@@ -29,7 +29,7 @@ export default function App() {
 
   return (
     <div style={{ padding: 16, fontFamily: 'system-ui' }}>
-      <h2>Calendar Cloner (MVP)</h2>
+      <h2>Custom Calendar (MVP)</h2>
 
       <div>
         <div>Paste your iCal / webcal URL:</div>
