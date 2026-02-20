@@ -1,48 +1,94 @@
-import { app, shell, BrowserWindow, ipcMain, Tray, nativeImage } from 'electron'
+import {
+  app,
+  shell,
+  BrowserWindow,
+  ipcMain,
+  Tray,
+  nativeImage,
+  screen,
+  type NativeImage
+} from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { importIcsToCalendar } from './importIcs'
+import { importIcsToCalendar, previewIcsEvents } from './importIcs'
 
 let tray: Tray | null = null
 let trayWindow: BrowserWindow | null = null
 
-function getTrayIcon() {
+const TRAY_WINDOW_WIDTH = 500
+const TRAY_WINDOW_HEIGHT = 800
+
+function getTrayIcon(): NativeImage {
   const iconPath = join(__dirname, '../../resources/icon.png')
   const image = nativeImage.createFromPath(iconPath)
   return process.platform === 'darwin' ? image.resize({ width: 18, height: 18 }) : image
 }
 
+function positionTrayWindow(): void {
+  if (!trayWindow || trayWindow.isDestroyed()) return
+
+  const trayBounds = tray && !tray.isDestroyed() ? tray.getBounds() : null
+  const anchorPoint = trayBounds
+    ? {
+        x: Math.round(trayBounds.x + trayBounds.width / 2),
+        y: Math.round(trayBounds.y + trayBounds.height / 2)
+      }
+    : screen.getCursorScreenPoint()
+
+  const display = screen.getDisplayNearestPoint(anchorPoint)
+  const { x: areaX, y: areaY, width: areaWidth, height: areaHeight } = display.workArea
+
+  const desiredX = trayBounds
+    ? Math.round(trayBounds.x + trayBounds.width / 2 - TRAY_WINDOW_WIDTH / 2)
+    : Math.round(anchorPoint.x - TRAY_WINDOW_WIDTH / 2)
+  const desiredY = trayBounds
+    ? Math.round(trayBounds.y + trayBounds.height + 8)
+    : Math.round(anchorPoint.y + 8)
+
+  const minX = areaX
+  const minY = areaY
+  const maxX = areaX + areaWidth - TRAY_WINDOW_WIDTH
+  const maxY = areaY + areaHeight - TRAY_WINDOW_HEIGHT
+
+  const x = Math.min(Math.max(desiredX, minX), Math.max(minX, maxX))
+  const y = Math.min(Math.max(desiredY, minY), Math.max(minY, maxY))
+
+  trayWindow.setBounds(
+    {
+      x,
+      y,
+      width: TRAY_WINDOW_WIDTH,
+      height: TRAY_WINDOW_HEIGHT
+    },
+    false
+  )
+}
+
 function toggleTrayWindow(): void {
   if (!trayWindow || trayWindow.isDestroyed()) return
-  if (tray && !tray.isDestroyed()) {
-    const trayBounds = tray.getBounds()
-    const windowBounds = trayWindow.getBounds()
-    const padding = 8
-    const x = Math.round(
-      trayBounds.x + trayBounds.width / 2 - windowBounds.width / 2
-    )
-    const y = Math.round(trayBounds.y + trayBounds.height + padding)
-    trayWindow.setPosition(x, y, false)
-  }
   if (trayWindow.isVisible()) {
     trayWindow.hide()
     return
   }
 
+  positionTrayWindow()
   trayWindow.show()
   trayWindow.focus()
 }
 
 function createTrayWindow(): void {
   trayWindow = new BrowserWindow({
-    width: 420,
-    height: 520,
+    width: TRAY_WINDOW_WIDTH,
+    height: TRAY_WINDOW_HEIGHT,
     show: false,
     frame: false,
+    transparent: true,
+    hasShadow: false,
     resizable: false,
     fullscreenable: false,
     autoHideMenuBar: true,
     skipTaskbar: true,
+    backgroundColor: '#00000000',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
@@ -84,6 +130,10 @@ app.whenReady().then(() => {
     return await importIcsToCalendar(opts)
   })
 
+  ipcMain.handle('calendar:previewIcs', async (_event, opts) => {
+    return await previewIcsEvents(opts)
+  })
+
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
   // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
@@ -94,9 +144,9 @@ app.whenReady().then(() => {
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
 
-  ipcMain.on("debug:log", (_evt, ...args) => {
-  console.log("[renderer]", ...args);
-});
+  ipcMain.on('debug:log', (_evt, ...args) => {
+    console.log('[renderer]', ...args)
+  })
 
   if (process.platform === 'darwin') {
     app.dock?.hide()

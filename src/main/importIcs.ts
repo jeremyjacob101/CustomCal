@@ -7,7 +7,39 @@ import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
 
-function normalizeIcsUrl(url: string) {
+export type ParsedIcsEvent = {
+  summary: string
+  description: string
+  location: string
+  isAllDay: boolean
+  startMs: number
+  endMs: number
+  startYMD: [number, number, number] | null
+  endYMD: [number, number, number] | null
+}
+
+type ImportPayload = {
+  calendarName: string
+  events: ParsedIcsEvent[]
+  container: 'local' | 'icloud'
+}
+
+type IcsSourceEvent = {
+  type?: string
+  datetype?: string
+  start?: unknown
+  end?: unknown
+  summary?: unknown
+  description?: unknown
+  location?: unknown
+}
+
+type ExecResult = {
+  stdout: string
+  stderr: string
+}
+
+function normalizeIcsUrl(url: string): string {
   return url.replace(/^webcal:\/\//i, 'https://')
 }
 
@@ -15,7 +47,7 @@ function ymd(d: Date): [number, number, number] {
   return [d.getFullYear(), d.getMonth() + 1, d.getDate()]
 }
 
-function isAllDayEvent(v: any): boolean {
+function isAllDayEvent(v: IcsSourceEvent): boolean {
   // node-ical usually marks all-day DTSTART/DTEND as datetype === 'date'
   if (v?.datetype === 'date') return true
 
@@ -41,22 +73,54 @@ function isAllDayEvent(v: any): boolean {
   return atMidnight && dur >= 0 && dur % oneDay === 0
 }
 
+function isIcsSourceEvent(value: unknown): value is IcsSourceEvent {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  return (value as IcsSourceEvent).type === 'VEVENT'
+}
+
 export async function importIcsToCalendar(opts: {
-  icsUrl: string
   targetCalendarName: string
   container: 'local' | 'icloud'
-}) {
-  const url = normalizeIcsUrl(opts.icsUrl)
+  events: ParsedIcsEvent[]
+}): Promise<{ created: number }> {
+  const payload: ImportPayload = {
+    calendarName: opts.targetCalendarName,
+    events: opts.events,
+    container: opts.container
+  }
 
-  const data: Record<string, any> = await (ical.async.fromURL as any)(url, {
+  const { stdout } =
+    opts.container === 'local' ? await runJxaImport(payload) : await runSwiftImport(payload)
+
+  return JSON.parse(stdout.trim()) as { created: number }
+}
+
+export async function previewIcsEvents(opts: {
+  icsUrl: string
+}): Promise<{ events: ParsedIcsEvent[] }> {
+  const events = await parseIcsEvents(opts.icsUrl)
+  return { events }
+}
+
+async function parseIcsEvents(icsUrl: string): Promise<ParsedIcsEvent[]> {
+  const url = normalizeIcsUrl(icsUrl)
+
+  const fromUrl = ical.async.fromURL as (
+    sourceUrl: string,
+    options: { headers: { 'User-Agent': string } }
+  ) => Promise<Record<string, unknown>>
+
+  const data = await fromUrl(url, {
     headers: { 'User-Agent': 'CustomCalendar/0.0.1' }
   })
 
   const oneDay = 24 * 60 * 60 * 1000
 
-  const events = Object.values(data)
-    .filter((v: any) => v?.type === 'VEVENT')
-    .map((v: any) => {
+  return Object.values(data)
+    .filter(isIcsSourceEvent)
+    .map((v) => {
       const allDay = isAllDayEvent(v)
 
       const start: Date = v.start instanceof Date ? v.start : new Date()
@@ -78,47 +142,16 @@ export async function importIcsToCalendar(opts: {
         summary: String(v.summary ?? '(no title)'),
         description: v.description ? String(v.description) : '',
         location: v.location ? String(v.location) : '',
-
         isAllDay: allDay,
-
-        // Timed events: pass exact timestamps
         startMs: start.getTime(),
         endMs: end.getTime(),
-
-        // All-day events: pass date parts to avoid timezone shifting
         startYMD: allDay ? ymd(start) : null,
         endYMD: allDay ? ymd(end) : null
       }
     })
-
-  const payload = {
-    calendarName: opts.targetCalendarName,
-    events,
-    container: opts.container
-  }
-
-  const { stdout } =
-    opts.container === 'local'
-      ? await runJxaImport(payload)
-      : await runSwiftImport(payload)
-
-  return JSON.parse(stdout.trim()) as { created: number }
 }
 
-async function runJxaImport(payload: {
-  calendarName: string
-  events: Array<{
-    summary: string
-    description: string
-    location: string
-    isAllDay: boolean
-    startMs: number
-    endMs: number
-    startYMD: [number, number, number] | null
-    endYMD: [number, number, number] | null
-  }>
-  container: 'local' | 'icloud'
-}) {
+async function runJxaImport(payload: ImportPayload): Promise<ExecResult> {
   const payloadB64 = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64')
 
   const jxa = `
@@ -175,23 +208,10 @@ payload.events.forEach(function(e) {
 JSON.stringify({ created: created });
 `
 
-  return await execFileAsync('/usr/bin/osascript', ['-l', 'JavaScript', '-e', jxa])
+  return (await execFileAsync('/usr/bin/osascript', ['-l', 'JavaScript', '-e', jxa])) as ExecResult
 }
 
-async function runSwiftImport(payload: {
-  calendarName: string
-  events: Array<{
-    summary: string
-    description: string
-    location: string
-    isAllDay: boolean
-    startMs: number
-    endMs: number
-    startYMD: [number, number, number] | null
-    endYMD: [number, number, number] | null
-  }>
-  container: 'local' | 'icloud'
-}) {
+async function runSwiftImport(payload: ImportPayload): Promise<ExecResult> {
   const script = `
 import Foundation
 import EventKit
@@ -324,7 +344,7 @@ FileHandle.standardOutput.write(resultData)
   try {
     await fs.writeFile(scriptPath, script, 'utf8')
     await fs.writeFile(payloadPath, JSON.stringify(payload), 'utf8')
-    return await execFileAsync('/usr/bin/swift', [scriptPath, payloadPath])
+    return (await execFileAsync('/usr/bin/swift', [scriptPath, payloadPath])) as ExecResult
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true })
   }
