@@ -8,6 +8,7 @@ import {
   screen,
   type NativeImage
 } from 'electron'
+import { existsSync } from 'node:fs'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { importIcsToCalendar, previewIcsEvents } from './importIcs'
@@ -18,10 +19,39 @@ let trayWindow: BrowserWindow | null = null
 const TRAY_WINDOW_WIDTH = 400
 const TRAY_WINDOW_HEIGHT = 500
 
+function resolveResourcePath(filename: string): string {
+  const candidates = [
+    join(__dirname, '../../resources', filename),
+    join(app.getAppPath(), 'resources', filename),
+    join(process.cwd(), 'resources', filename)
+  ]
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate
+  }
+
+  return candidates[0]
+}
+
 function getTrayIcon(): NativeImage {
-  const iconPath = join(__dirname, '../../resources/icon.png')
-  const image = nativeImage.createFromPath(iconPath)
-  return process.platform === 'darwin' ? image.resize({ width: 18, height: 18 }) : image
+  if (process.platform === 'darwin') {
+    const templatePngPath = resolveResourcePath('tray-calendar-filter-template.png')
+    const templatePng = nativeImage
+      .createFromPath(templatePngPath)
+      .resize({ width: 16, height: 16 })
+    templatePng.setTemplateImage(true)
+    if (!templatePng.isEmpty()) return templatePng
+
+    const templateSvgPath = resolveResourcePath('tray-calendar-filter-template.svg')
+    const templateSvg = nativeImage
+      .createFromPath(templateSvgPath)
+      .resize({ width: 16, height: 16 })
+    templateSvg.setTemplateImage(true)
+    if (!templateSvg.isEmpty()) return templateSvg
+  }
+
+  const fallbackPath = resolveResourcePath('icon.png')
+  return nativeImage.createFromPath(fallbackPath).resize({ width: 16, height: 16 })
 }
 
 function positionTrayWindow(): void {

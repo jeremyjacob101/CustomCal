@@ -101,7 +101,7 @@ export default function App(): React.JSX.Element {
   const [isPreviewing, setIsPreviewing] = useState(false)
   const [isAdding, setIsAdding] = useState(false)
   const [isEditorOpen, setIsEditorOpen] = useState(false)
-  const [log, setLog] = useState('')
+  const [, setLog] = useState('')
 
   const eventGroups = useMemo(() => groupEventsBySummary(previewEvents), [previewEvents])
   const hasPreview = eventGroups.length > 0
@@ -112,12 +112,6 @@ export default function App(): React.JSX.Element {
     if (selectedGroups[group.key] ?? false) return count + group.events.length
     return count
   }, 0)
-
-  const statusTone = log.startsWith('Error:')
-    ? 'status-error'
-    : log.startsWith('Done.')
-      ? 'status-success'
-      : 'status-info'
 
   useEffect(() => {
     if (!isEditorOpen) return undefined

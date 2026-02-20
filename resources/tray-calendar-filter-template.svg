@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
+  <g fill="#000">
+    <path fill-rule="evenodd" d="M2.1 3.3c0-1.1.9-2 2-2h6.9c1.1 0 2 .9 2 2v10c0 1.1-.9 2-2 2H4.1c-1.1 0-2-.9-2-2v-10zm2-.7a.7.7 0 0 0-.7.7v10c0 .4.3.7.7.7h6.9c.4 0 .7-.3.7-.7v-10a.7.7 0 0 0-.7-.7H4.1z"/>
+    <rect x="2.8" y="6.1" width="9.5" height="1.3" rx=".65"/>
+    <rect x="4.8" y="8.6" width="1.7" height="1.5" rx=".35"/>
+    <rect x="7.3" y="8.6" width="1.7" height="1.5" rx=".35"/>
+    <rect x="4.8" y="11" width="1.7" height="1.5" rx=".35"/>
+    <rect x="7.3" y="11" width="1.7" height="1.5" rx=".35"/>
+    <rect x="4.8" y="2.1" width="1.2" height="2.2" rx=".6"/>
+    <rect x="9.1" y="2.1" width="1.2" height="2.2" rx=".6"/>
+    <path d="M12.5 2.4h3.8l-1.4 1.9v2.3l-1 .9V4.3z"/>
+  </g>
+</svg>
