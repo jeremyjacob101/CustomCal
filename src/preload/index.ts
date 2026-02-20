@@ -21,5 +21,6 @@ contextBridge.exposeInMainWorld('electron', {
     targetCalendarName: string
     container: 'local' | 'icloud'
     events: ParsedIcsEvent[]
+    calendarColorHex: string
   }) => ipcRenderer.invoke('calendar:importIcs', opts) as Promise<{ created: number }>
 })

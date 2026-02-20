@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 type ParsedIcsEvent = {
   summary: string
@@ -30,17 +30,11 @@ function groupEventsBySummary(events: ParsedIcsEvent[]): EventGroup[] {
     const label = event.summary.trim() || '(no title)'
     const key = groupKeyForSummary(label)
     const existing = groups.get(key)
-
     if (existing) {
       existing.events.push(event)
       continue
     }
-
-    groups.set(key, {
-      key,
-      label,
-      events: [event]
-    })
+    groups.set(key, { key, label, events: [event] })
   }
 
   return Array.from(groups.values())
@@ -87,11 +81,9 @@ function formatGroupDateRange(events: ParsedIcsEvent[]): string {
 
   const minDate = new Date(minStart).toLocaleDateString()
   const maxDate = new Date(maxStart).toLocaleDateString()
-
   if (minDate === maxDate) {
     return `${events.length} occurrences on ${minDate}`
   }
-
   return `${events.length} occurrences from ${minDate} to ${maxDate}`
 }
 
@@ -102,12 +94,43 @@ function errorMessage(error: unknown): string {
 export default function App(): React.JSX.Element {
   const [icsUrl, setIcsUrl] = useState('')
   const [name, setName] = useState('Imported Copy')
+  const [calendarColor, setCalendarColor] = useState('#0A84FF')
   const [container, setContainer] = useState<'local' | 'icloud'>('icloud')
   const [previewEvents, setPreviewEvents] = useState<ParsedIcsEvent[]>([])
   const [selectedGroups, setSelectedGroups] = useState<Record<string, boolean>>({})
   const [isPreviewing, setIsPreviewing] = useState(false)
   const [isAdding, setIsAdding] = useState(false)
+  const [isEditorOpen, setIsEditorOpen] = useState(false)
   const [log, setLog] = useState('')
+
+  const eventGroups = useMemo(() => groupEventsBySummary(previewEvents), [previewEvents])
+  const hasPreview = eventGroups.length > 0
+  const selectedGroupCount = eventGroups.filter(
+    (group) => selectedGroups[group.key] ?? false
+  ).length
+  const selectedEventCount = eventGroups.reduce((count, group) => {
+    if (selectedGroups[group.key] ?? false) return count + group.events.length
+    return count
+  }, 0)
+
+  const statusTone = log.startsWith('Error:')
+    ? 'status-error'
+    : log.startsWith('Done.')
+      ? 'status-success'
+      : 'status-info'
+
+  useEffect(() => {
+    if (!isEditorOpen) return undefined
+
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'Escape' && !isAdding && !isPreviewing) {
+        setIsEditorOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isEditorOpen, isAdding, isPreviewing])
 
   async function runPreview(): Promise<void> {
     if (!window.electron) {
@@ -130,19 +153,23 @@ export default function App(): React.JSX.Element {
       for (const group of groups) {
         initialSelection[group.key] = true
       }
+
       setPreviewEvents(res.events)
       setSelectedGroups(initialSelection)
+
       if (res.events.length === 0) {
+        setIsEditorOpen(false)
         setLog('No events found in this feed.')
-      } else {
-        setLog(
-          `Preview ready. ${res.events.length} events found. Uncheck any events you do not want, then click "Add to iCalendar".`
-        )
+        return
       }
+
+      setIsEditorOpen(true)
+      setLog(`Preview ready. ${res.events.length} events found.`)
     } catch (e: unknown) {
-      setLog('Error: ' + errorMessage(e))
+      setIsEditorOpen(false)
       setPreviewEvents([])
       setSelectedGroups({})
+      setLog('Error: ' + errorMessage(e))
     } finally {
       setIsPreviewing(false)
     }
@@ -158,6 +185,7 @@ export default function App(): React.JSX.Element {
       const key = groupKeyForSummary(event.summary.trim() || '(no title)')
       return selectedGroups[key] ?? false
     })
+
     if (events.length === 0) {
       setLog('Select at least one event before adding to iCalendar.')
       return
@@ -170,8 +198,10 @@ export default function App(): React.JSX.Element {
       const res = await window.electron.importCalendar({
         targetCalendarName: name,
         container,
-        events
+        events,
+        calendarColorHex: calendarColor
       })
+      setIsEditorOpen(false)
       setLog(`Done. Created ${res.created} events in "${name}".`)
     } catch (e: unknown) {
       setLog('Error: ' + errorMessage(e))
@@ -187,98 +217,106 @@ export default function App(): React.JSX.Element {
     }))
   }
 
-  const eventGroups = useMemo(() => groupEventsBySummary(previewEvents), [previewEvents])
-  const hasPreview = eventGroups.length > 0
-  const selectedGroupCount = eventGroups.filter(
-    (group) => selectedGroups[group.key] ?? false
-  ).length
-  const selectedEventCount = eventGroups.reduce((count, group) => {
-    if (selectedGroups[group.key] ?? false) {
-      return count + group.events.length
-    }
-    return count
-  }, 0)
-  const statusTone = log.startsWith('Error:')
-    ? 'status-error'
-    : log.startsWith('Done.')
-      ? 'status-success'
-      : 'status-info'
+  function selectAllGroups(value: boolean): void {
+    setSelectedGroups(Object.fromEntries(eventGroups.map((group) => [group.key, value])))
+  }
 
   return (
-    <div className="overlay-root">
-      <div className="modal-shell">
-        <div className="tray-app">
-          <section className="tray-card">
-            <label className="field">
-              <span>iCal URL</span>
-              <input
-                value={icsUrl}
-                onChange={(e) => setIcsUrl(e.target.value)}
-                placeholder="https://example.com/calendar.ics"
-              />
-            </label>
+    <div className="app-root">
+      <section className="import-screen card">
+        <label className="field">
+          <span>iCal URL</span>
+          <input
+            value={icsUrl}
+            onChange={(e) => setIcsUrl(e.target.value)}
+            placeholder="https://example.com/calendar.ics"
+          />
+        </label>
 
-            <label className="field">
-              <span>New calendar name</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} />
-            </label>
+        <label className="field">
+          <span>New calendar name</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
 
-            <label className="field">
-              <span>Destination account</span>
-              <select
-                value={container}
-                onChange={(e) => setContainer(e.target.value as 'local' | 'icloud')}
+        <label className="field">
+          <span>Destination account</span>
+          <select
+            value={container}
+            onChange={(e) => setContainer(e.target.value as 'local' | 'icloud')}
+          >
+            <option value="icloud">iCloud</option>
+            <option value="local">On My Mac</option>
+          </select>
+        </label>
+
+        <label className="field">
+          <span>Calendar color</span>
+          <div className="color-row">
+            <input
+              className="color-picker"
+              type="color"
+              value={calendarColor}
+              onChange={(e) => setCalendarColor(e.target.value.toUpperCase())}
+              aria-label="Calendar color"
+            />
+            <div className="color-value">{calendarColor.toUpperCase()}</div>
+          </div>
+        </label>
+
+        <button
+          className="btn btn-primary"
+          onClick={runPreview}
+          disabled={isPreviewing || isAdding}
+        >
+          {isPreviewing ? 'Importing...' : 'Import And Review'}
+        </button>
+      </section>
+
+      {isEditorOpen ? (
+        <div
+          className="editor-overlay"
+          onClick={() => {
+            if (!isAdding && !isPreviewing) setIsEditorOpen(false)
+          }}
+        >
+          <section
+            className="editor-modal card"
+            onClick={(event) => event.stopPropagation()}
+            aria-label="Review events"
+          >
+            <header className="editor-header">
+              <div>
+                <h2>Review Events</h2>
+                <p className="subtle">
+                  {selectedGroupCount}/{eventGroups.length} groups selected ({selectedEventCount}/
+                  {previewEvents.length} events)
+                </p>
+              </div>
+              <button
+                className="btn btn-quiet"
+                onClick={() => setIsEditorOpen(false)}
+                disabled={isAdding || isPreviewing}
               >
-                <option value="icloud">iCloud</option>
-                <option value="local">On My Mac</option>
-              </select>
-            </label>
+                Done
+              </button>
+            </header>
 
-            <button
-              className="btn btn-primary"
-              onClick={runPreview}
-              disabled={isPreviewing || isAdding}
-            >
-              {isPreviewing ? 'Importing...' : 'Import'}
-            </button>
-          </section>
-
-          <section className="tray-card preview-card">
-            <div className="preview-head">
-              <div className="preview-title">Events Preview</div>
-              <div className="preview-count">
-                {hasPreview
-                  ? `${selectedGroupCount}/${eventGroups.length} selected (${selectedEventCount}/${previewEvents.length} events)`
-                  : 'No preview yet'}
-              </div>
+            <div className="editor-tools">
+              <button
+                className="btn btn-ghost"
+                onClick={() => selectAllGroups(true)}
+                disabled={isAdding || isPreviewing}
+              >
+                Select all
+              </button>
+              <button
+                className="btn btn-ghost"
+                onClick={() => selectAllGroups(false)}
+                disabled={isAdding || isPreviewing}
+              >
+                Clear all
+              </button>
             </div>
-
-            {hasPreview ? (
-              <div className="preview-tools">
-                <button
-                  className="btn btn-ghost"
-                  onClick={() =>
-                    setSelectedGroups(
-                      Object.fromEntries(eventGroups.map((group) => [group.key, true]))
-                    )
-                  }
-                  disabled={isAdding || isPreviewing}
-                >
-                  Select all
-                </button>
-                <button
-                  className="btn btn-ghost"
-                  onClick={() =>
-                    setSelectedGroups(
-                      Object.fromEntries(eventGroups.map((group) => [group.key, false]))
-                    )
-                  }
-                  disabled={isAdding || isPreviewing}
-                >
-                  Clear all
-                </button>
-              </div>
-            ) : null}
 
             <div className="event-list">
               {hasPreview ? (
@@ -301,24 +339,29 @@ export default function App(): React.JSX.Element {
                   </label>
                 ))
               ) : (
-                <div className="empty-state">Import a link to preview events here.</div>
+                <div className="empty-state">No events to review.</div>
               )}
             </div>
 
-            <button
-              className="btn btn-accent"
-              onClick={addSelectedEvents}
-              disabled={isAdding || isPreviewing || selectedEventCount === 0}
-            >
-              {isAdding ? 'Adding...' : 'Add Selected to iCalendar'}
-            </button>
+            <footer className="editor-footer">
+              <button
+                className="btn btn-quiet"
+                onClick={() => setIsEditorOpen(false)}
+                disabled={isAdding || isPreviewing}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={addSelectedEvents}
+                disabled={isAdding || isPreviewing || selectedEventCount === 0}
+              >
+                {isAdding ? 'Adding...' : 'Add Selected to iCalendar'}
+              </button>
+            </footer>
           </section>
-
-          <div className={`status-line ${statusTone}`}>
-            {log || 'Ready to import. Paste a URL and click Import.'}
-          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   )
 }

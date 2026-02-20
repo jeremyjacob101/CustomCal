@@ -22,6 +22,7 @@ declare global {
         targetCalendarName: string
         container: 'local' | 'icloud'
         events: ParsedIcsEvent[]
+        calendarColorHex: string
       }): Promise<{ created: number }>
     }
   }

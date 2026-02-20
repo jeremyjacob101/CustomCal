@@ -15,8 +15,8 @@ import { importIcsToCalendar, previewIcsEvents } from './importIcs'
 let tray: Tray | null = null
 let trayWindow: BrowserWindow | null = null
 
-const TRAY_WINDOW_WIDTH = 500
-const TRAY_WINDOW_HEIGHT = 800
+const TRAY_WINDOW_WIDTH = 400
+const TRAY_WINDOW_HEIGHT = 500
 
 function getTrayIcon(): NativeImage {
   const iconPath = join(__dirname, '../../resources/icon.png')

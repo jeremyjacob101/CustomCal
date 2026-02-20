@@ -22,6 +22,7 @@ type ImportPayload = {
   calendarName: string
   events: ParsedIcsEvent[]
   container: 'local' | 'icloud'
+  calendarColorHex: string
 }
 
 type IcsSourceEvent = {
@@ -41,6 +42,14 @@ type ExecResult = {
 
 function normalizeIcsUrl(url: string): string {
   return url.replace(/^webcal:\/\//i, 'https://')
+}
+
+function normalizeCalendarColorHex(value: string): string {
+  const normalized = value.trim()
+  if (/^#[\da-fA-F]{6}$/.test(normalized)) {
+    return normalized.toUpperCase()
+  }
+  return '#0A84FF'
 }
 
 function ymd(d: Date): [number, number, number] {
@@ -84,11 +93,13 @@ export async function importIcsToCalendar(opts: {
   targetCalendarName: string
   container: 'local' | 'icloud'
   events: ParsedIcsEvent[]
+  calendarColorHex: string
 }): Promise<{ created: number }> {
   const payload: ImportPayload = {
     calendarName: opts.targetCalendarName,
     events: opts.events,
-    container: opts.container
+    container: opts.container,
+    calendarColorHex: normalizeCalendarColorHex(opts.calendarColorHex)
   }
 
   const { stdout } =
@@ -171,6 +182,7 @@ var matches = Calendar.calendars.whose({ name: payload.calendarName });
 var cal = (matches.length > 0)
   ? matches[0]
   : Calendar.Calendar({ name: payload.calendarName }).make();
+try { cal.color = payload.calendarColorHex; } catch (err) {}
 
 var created = 0;
 
@@ -215,6 +227,7 @@ async function runSwiftImport(payload: ImportPayload): Promise<ExecResult> {
   const script = `
 import Foundation
 import EventKit
+import CoreGraphics
 
 struct EventPayload: Codable {
   let summary: String
@@ -231,6 +244,19 @@ struct Payload: Codable {
   let calendarName: String
   let events: [EventPayload]
   let container: String
+  let calendarColorHex: String
+}
+
+func colorFromHex(_ rawHex: String) -> CGColor? {
+  let hex = rawHex.trimmingCharacters(in: .whitespacesAndNewlines)
+  guard hex.count == 7, hex.hasPrefix("#") else { return nil }
+  let start = hex.index(after: hex.startIndex)
+  let rgbHex = String(hex[start...])
+  guard let value = UInt32(rgbHex, radix: 16) else { return nil }
+  let red = CGFloat((value >> 16) & 0xFF) / 255.0
+  let green = CGFloat((value >> 8) & 0xFF) / 255.0
+  let blue = CGFloat(value & 0xFF) / 255.0
+  return CGColor(red: red, green: green, blue: blue, alpha: 1.0)
 }
 
 let args = CommandLine.arguments
@@ -305,6 +331,13 @@ if let existing = targetCalendar {
   newCalendar.source = source
   try store.saveCalendar(newCalendar, commit: true)
   calendar = newCalendar
+}
+
+if let chosenColor = colorFromHex(payload.calendarColorHex) {
+  do {
+    calendar.cgColor = chosenColor
+    try store.saveCalendar(calendar, commit: true)
+  } catch {}
 }
 
 let cal = Calendar.current
