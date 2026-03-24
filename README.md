@@ -1,68 +1,143 @@
 # CustomCal
 
-Turn a noisy `.ics` feed into a clean Apple Calendar you actually control.
+<p align="center">
+  <strong>A compact menubar utility for turning shared calendar feeds into your own Apple Calendar.</strong><br />
+  Subscribe less. Curate more.
+</p>
 
-## Copy The Calendar, Keep The Control
+<p align="center">
+  <img src="https://img.shields.io/badge/Electron-39.x-1f2937?style=for-the-badge&logo=electron&logoColor=9feaf9" alt="Electron badge" />
+  <img src="https://img.shields.io/badge/React-19.x-111827?style=for-the-badge&logo=react&logoColor=61dafb" alt="React badge" />
+  <img src="https://img.shields.io/badge/TypeScript-5.x-0f172a?style=for-the-badge&logo=typescript&logoColor=3178c6" alt="TypeScript badge" />
+  <img src="https://img.shields.io/badge/Vite-7.x-1e1b4b?style=for-the-badge&logo=vite&logoColor=ffd62e" alt="Vite badge" />
+  <img src="https://img.shields.io/badge/macOS-Apple%20Calendar%20utility-052e16?style=for-the-badge&logo=apple&logoColor=ffffff" alt="macOS Apple Calendar utility badge" />
+</p>
 
-Most shared calendars ask you to subscribe to everything exactly as published: every event, every wording choice, every color, every bit of clutter.
+## Calendar, Curated
 
-CustomCal takes a softer approach. Paste an `ics` or `webcal` link, preview what is inside, group repeated events by title, keep the parts you want, and write the result into your own Apple Calendar as a new calendar copy.
+> Calendar subscriptions are convenient.
+>
+> Living with every event forever is the hard part.
 
-It is not a live sync tool. It is an import-and-curate tool for when the source calendar is useful, but not quite yours.
+CustomCal is a lightweight desktop utility that lives in the menubar and turns a remote `ics` or `webcal` feed into a calendar you actually control. Paste a feed URL, preview the events, group repeating items by title, and import only the groups you want into a new calendar in Apple Calendar.
+
+It is part feed importer, part review tool, and part escape hatch from all-or-nothing calendar subscriptions.
 
 ## Overview
 
-CustomCal is a lightweight Electron tray app built with React and TypeScript. It fetches remote iCalendar feeds, parses events with `node-ical`, lets you review grouped results, and then creates events in Apple Calendar using:
+At the center of the app is a simple idea: a shared calendar does not have to stay a subscription to stay useful.
 
-- EventKit via Swift when importing to `iCloud`
-- JavaScript for Automation when importing to `On My Mac`
+CustomCal fetches a remote iCalendar feed, normalizes timed and all-day events, groups matching items by summary, and lets you review everything before anything is written to Calendar.app. When you are ready, it creates or reuses a destination calendar and imports the selected events into either `iCloud` or `On My Mac`.
 
-That split matters because Apple Calendar behaves differently depending on where the destination calendar lives. CustomCal handles that difference for you.
+The review flow lives in [`src/renderer/src/App.tsx`](src/renderer/src/App.tsx), while the import bridge and Apple Calendar logic live in [`src/main/importIcs.ts`](src/main/importIcs.ts).
 
-## Why It Exists
+## Highlights
 
-- Public or shared calendars are often all-or-nothing.
-- Subscriptions usually keep the publisher's naming, color, and category structure.
-- Sometimes you only want selected event groups, not the whole feed.
-- Sometimes you want the events copied into your own iCloud or local calendar instead of staying as a subscription.
+- Menubar/tray app with a compact frameless popup instead of a full desktop window.
+- Accepts both direct `https://...ics` feeds and `webcal://` URLs.
+- Groups repeated events by normalized title so whole series can be included or skipped together.
+- Supports importing into either `iCloud` or `On My Mac`.
+- Creates the destination calendar if it does not already exist and applies a chosen color when possible.
+- Uses `node-ical` for feed parsing and a native macOS import path for Apple Calendar integration.
+- One-way import workflow that is intentionally simple and deliberate.
 
-CustomCal makes that workflow fast:
+## How It Works
 
-1. Paste a feed URL.
-2. Preview the events.
-3. Select the groups you want.
-4. Import them into a new calendar with your own name and color.
+CustomCal moves feed data through five stages:
 
-## What It Does
+1. The user pastes an `ics` or `webcal` URL into the popup window.
+2. The main process fetches and parses the feed with `node-ical`.
+3. The renderer groups the parsed events by summary for review and selection.
+4. The selected events are packaged for import into Apple Calendar.
+5. The import is performed through EventKit for iCloud calendars or JXA for local calendars.
 
-- Accepts both `https://...calendar.ics` and `webcal://...` links
-- Downloads and parses remote iCalendar feeds
-- Detects timed events and all-day events
-- Groups repeated events by normalized event title
-- Lets you select or clear whole groups before import
-- Creates a destination calendar if it does not already exist
-- Supports importing to either `iCloud` or `On My Mac`
-- Applies a chosen calendar color when possible
-- Runs as a compact tray-style desktop utility
+There are a few important details in that pipeline:
 
-## What It Does Not Do
+- `webcal://` feeds are normalized to `https://` before fetching.
+- All-day events are treated carefully so Apple Calendar receives an exclusive end date.
+- The app uses different native strategies for `iCloud` and `On My Mac` because those destinations behave differently on macOS.
 
-- It does not maintain a two-way sync with the source feed
-- It does not currently update or delete previously imported events
-- It does not expose per-occurrence selection inside a grouped series
-- It is not a general Google Calendar or Outlook integration layer
+```mermaid
+flowchart LR
+  A["Feed URL"] --> B["node-ical fetch + parse"]
+  B --> C["Normalized event list"]
+  C --> D["Group by title"]
+  D --> E["Review + select"]
+  E --> F["Import payload"]
+  F --> G["Swift EventKit (iCloud)"]
+  F --> H["JXA (On My Mac)"]
+  G --> I["Apple Calendar"]
+  H --> I
+```
 
-Those limits are worth calling out up front because the app is strongest as a deliberate one-way importer.
+## User Experience
 
-## Requirements
+### Import Flow
 
-- macOS for the full import workflow into Apple Calendar
-- Apple Calendar permission granted to the app when prompted
-- Node.js and npm for local development
+The main popup is designed to keep the import path short and clear. It collects:
 
-The repository includes build targets for Windows and Linux because the Electron tooling supports them, but the calendar import implementation is currently Apple Calendar based and therefore macOS-first in practice.
+- the source `ics` or `webcal` URL
+- the new calendar name
+- the destination account (`iCloud` or `On My Mac`)
+- the calendar color
+
+That screen is rendered by [`src/renderer/src/App.tsx`](src/renderer/src/App.tsx), with tray-window creation handled in [`src/main/index.ts`](src/main/index.ts).
+
+### Review Events
+
+After previewing the feed, CustomCal opens a review modal that groups events by summary title. If a feed repeats the same titled event many times, you can keep or remove the whole group with a single checkbox.
+
+That makes the app especially useful for noisy calendars where recurring series matter more than one-off details.
+
+## Tech Stack
+
+- Electron for the menubar app, tray window, IPC, and desktop packaging
+- React for the renderer UI
+- TypeScript for the main, preload, and renderer layers
+- Vite via `electron-vite` for development and production builds
+- `node-ical` for remote iCalendar feed parsing
+- Swift + EventKit for iCloud calendar imports on macOS
+- JavaScript for Automation (`osascript`) for local `On My Mac` calendar imports
+
+## Project Structure
+
+```text
+.
+├── build/
+│   ├── entitlements.mac.plist
+│   ├── icon.icns
+│   ├── icon.ico
+│   └── icon.png
+├── resources/
+│   ├── icon.png
+│   ├── tray-calendar-filter-template.png
+│   └── tray-calendar-filter-template.svg
+├── src/
+│   ├── main/
+│   │   ├── importIcs.ts
+│   │   └── index.ts
+│   ├── preload/
+│   │   └── index.ts
+│   └── renderer/
+│       ├── index.html
+│       └── src/
+│           ├── App.tsx
+│           ├── main.tsx
+│           └── assets/
+├── electron-builder.yml
+├── package.json
+└── tsconfig.json
+```
 
 ## Getting Started
+
+### Prerequisites
+
+- Node.js 20+ is recommended
+- npm
+- macOS for the intended menubar and Apple Calendar workflow
+- Apple Calendar access granted to the app when macOS prompts for it
+- An iCloud account configured in Calendar if you want to import into `iCloud`
 
 ### Install
 
@@ -76,12 +151,18 @@ npm install
 npm run dev
 ```
 
-This launches the Electron app with the Vite-powered renderer in development mode.
+This starts the Electron app in development mode with the Vite-powered renderer.
 
 ### Typecheck
 
 ```bash
 npm run typecheck
+```
+
+### Build The App
+
+```bash
+npm run build
 ```
 
 ### Lint
@@ -90,153 +171,45 @@ npm run typecheck
 npm run lint
 ```
 
-### Format
-
-```bash
-npm run format
-```
-
 ## Packaging
 
-### Build The App
+CustomCal is currently configured primarily around a macOS-first experience, even though Electron Builder scripts are also present for Windows and Linux targets.
 
 ```bash
-npm run build
-```
-
-### Platform Builds
-
-```bash
-# macOS
 npm run build:mac
-
-# Windows
-npm run build:win
-
-# Linux
-npm run build:linux
 ```
 
-There are also unpacked output and preview scripts available in `package.json` if you want to inspect the bundled app without creating an installer.
+Other package scripts:
 
-## How To Use It
+- `npm run build:unpack` builds an unpacked app directory
+- `npm run build:win` builds the Windows target
+- `npm run build:linux` builds the Linux target
 
-### 1. Launch CustomCal
+The Electron Builder configuration lives in [`electron-builder.yml`](electron-builder.yml).
 
-On macOS, the app behaves like a tray utility. Click the menu bar icon to open the interface.
+## Customization
 
-### 2. Paste A Feed URL
+If you want to change the behavior of the app, these are the main places to start:
 
-Enter a direct `ics` link or a `webcal://` URL. The app normalizes `webcal://` to `https://` before fetching.
+- [`src/renderer/src/App.tsx`](src/renderer/src/App.tsx)
+  Adjust the input flow, grouping UI, and review experience.
+- [`src/main/importIcs.ts`](src/main/importIcs.ts)
+  Change feed parsing, event normalization, all-day handling, and Apple Calendar import behavior.
+- [`src/main/index.ts`](src/main/index.ts)
+  Tune tray behavior, popup positioning, and Electron lifecycle details.
+- [`src/renderer/src/assets/main.css`](src/renderer/src/assets/main.css)
+  Restyle the popup and modal presentation.
 
-### 3. Choose The Destination
+## Notes And Limitations
 
-Pick:
+CustomCal is intentionally not a full sync engine.
 
-- `iCloud` to create or reuse a calendar backed by your iCloud account
-- `On My Mac` to create or reuse a local calendar on the device
+- It imports selected events once rather than maintaining a live subscription.
+- It does not currently reconcile duplicates across multiple imports.
+- It does not yet support editing or removing previously imported events as a managed set.
+- It groups events by title, which is fast and practical, but may combine separate events that share the same summary.
 
-### 4. Name And Color The New Calendar
-
-Choose the calendar name that should appear in Apple Calendar and optionally set a color.
-
-### 5. Preview The Feed
-
-Click `Import And Review` to fetch the remote calendar and build the review list.
-
-### 6. Curate The Results
-
-Events are grouped by summary title so repeated items can be selected as a set. Use:
-
-- `Select all`
-- `Clear all`
-- individual group checkboxes
-
-### 7. Import Into Apple Calendar
-
-Click `Add Selected to iCalendar` to create the events in the chosen destination calendar.
-
-## How It Works
-
-### Renderer
-
-The React UI collects the feed URL, calendar metadata, and review selections. It also groups fetched events by normalized summary text so recurring or repeated events can be toggled together.
-
-### Preload
-
-The preload layer exposes a small, focused API to the renderer:
-
-- `previewCalendar`
-- `importCalendar`
-
-This keeps the renderer isolated from direct Electron or Node access.
-
-### Main Process
-
-The Electron main process:
-
-- creates the tray icon and tray window
-- positions the popover-style window near the tray
-- wires up IPC handlers for preview and import operations
-
-### Import Pipeline
-
-1. `node-ical` fetches and parses the remote feed
-2. Event data is normalized into a renderer-safe structure
-3. Import payloads are sent to the native-side calendar bridge
-4. Swift + EventKit handles `iCloud`
-5. JXA handles `On My Mac`
-
-This approach avoids trying to force one Apple automation path to cover both storage backends.
-
-## Project Structure
-
-```text
-src/
-  main/       Electron main process and calendar import bridge
-  preload/    Safe renderer API exposed through contextBridge
-  renderer/   React UI
-resources/    App imagery and tray template assets
-build/        Packaged-app icons and macOS entitlements
-```
-
-## Permissions And Notes
-
-- The app will need Calendar access on macOS.
-- If permission is denied, imports will fail until access is granted in system settings.
-- All-day events are handled carefully so end dates remain exclusive, which is what Apple Calendar expects.
-- Calendar colors are normalized to a hex value and default to `#0A84FF` if an invalid value is supplied.
-
-## Troubleshooting
-
-### Nothing happens after clicking import
-
-- Make sure the preload bridge is available and the app is running normally through Electron
-- Confirm the URL is a valid reachable `ics` or `webcal` feed
-
-### The app says no events were found
-
-- The feed may be empty
-- The URL may redirect somewhere unexpected
-- The source may not actually be serving iCalendar data
-
-### Import to iCloud fails
-
-- Make sure Calendar access was granted
-- Confirm the Mac is signed into iCloud with Calendar enabled
-
-### Import to On My Mac fails
-
-- Make sure Apple Calendar has a local calendar source available
-- Retry after granting permission to the app if macOS prompts for automation or calendar access
-
-## Future Directions
-
-- per-occurrence selection within a repeated series
-- smarter duplicate detection across repeated imports
-- update and removal flows for previously imported calendars
-- richer status and error feedback in the UI
-- polished onboarding and first-run guidance
+That tradeoff keeps the app lightweight and makes the review flow understandable at a glance.
 
 ## License
 
